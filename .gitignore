@@ -108,3 +108,8 @@ ENV/
 .mypy_cache/
 
 .DS_Store
+
+# Ignore all folders at the root level except for docs and anipose
+/*
+!/docs/
+!/anipose/
