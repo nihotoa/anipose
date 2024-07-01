@@ -181,7 +181,8 @@ def process_session(config, session_path):
             return
         # aniposelibの中からクラスを持ってきて格納
         cgroup = CameraGroup.from_names(cam_names, config['calibration']['fisheye'])
-
+    
+    # charucoボードのインスタンスを生成(aniposelibのboard.pyで定義されたクラス)
     board = get_calibration_board(config)
 
 
@@ -191,6 +192,7 @@ def process_session(config, session_path):
             with open(rows_fname, 'rb') as f:
                 all_rows = pickle.load(f)
         else:
+            # video_listの各videoの全フレームの全コーナーを検出して、その画像座標、実座標、その他の必要情報を辞書にして返す
             all_rows = cgroup.get_rows_videos(video_list, board)
             with open(rows_fname, 'wb') as f:
                 pickle.dump(all_rows, f)

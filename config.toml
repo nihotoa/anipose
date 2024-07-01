@@ -52,7 +52,7 @@ triangulate = true
 cam_regex = '-cam([A-Z])'
 cam_align = "A"
 ransac = true
-optim = true
+optim = false
 constraints = [
    ["base", "MCP1"], ["MCP1", "PIP1"], ["PIP1", "tip1"],
    ["base", "MCP2"], ["MCP2", "PIP2"], ["PIP2", "DIP2"], ["DIP2", "tip2"],

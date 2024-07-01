@@ -195,16 +195,19 @@ def triangulate(config,
 
     cam_names = sorted(fname_dict.keys())
 
+    # キャリブレーション後のパラメータを記録しているcalibration.tomlから情報をload
     calib_fname = os.path.join(calib_folder, 'calibration.toml')
     cgroup = CameraGroup.load(calib_fname)
 
     offsets_dict = load_offsets_dict(config, cam_names, video_folder)
 
+    # 2D-filter済みの実験動画の2D情報が含まれている辞書を出力
     out = load_pose2d_fnames(fname_dict, offsets_dict, cam_names)
-    all_points_raw = out['points']
-    all_scores = out['scores']
-    bodyparts = out['bodyparts']
+    all_points_raw = out['points'] # 全フレーム、全ポイントの画像座標
+    all_scores = out['scores'] # それに伴うlikelyhood
+    bodyparts = out['bodyparts'] # キーポイントの名前
 
+    # cgroup.camerasと、cgroup.metadataにオブジェクトを代入
     cgroup = cgroup.subset_cameras_names(cam_names)
 
     n_cams, n_frames, n_joints, _ = all_points_raw.shape
@@ -212,6 +215,7 @@ def triangulate(config,
     bad = all_scores < config['triangulation']['score_threshold']
     all_points_raw[bad] = np.nan
 
+    # 条件分岐によって適応するフィルタを変える
     if config['triangulation']['optim']:
         constraints = load_constraints(config, bodyparts)
         constraints_weak = load_constraints(config, bodyparts, 'constraints_weak')
@@ -263,6 +267,10 @@ def triangulate(config,
     else:
         points_2d = all_points_raw.reshape(n_cams, n_frames*n_joints, 2)
         if config['triangulation']['ransac']:
+
+            # RANSACによるtriangulationの実施
+            # pickedはブール値の配列で、triangulationの際にそのカメラを使ったかどうか
+            # errorsはransac-triangulationを行った際の、各フレーム、各キーポイントにおける再投影誤差の値
             points_3d, picked, p2ds, errors = cgroup.triangulate_ransac(
                 points_2d, min_cams=3, progress=True)
 
@@ -288,6 +296,7 @@ def triangulate(config,
         all_errors[num_cams < 2] = np.nan
         num_cams[num_cams < 2] = np.nan
 
+    # 実座標の原点と軸方向を変えるための処理
     if 'reference_point' in config['triangulation'] and 'axes' in config['triangulation']:
         all_points_3d_adj, M, center = correct_coordinate_frame(config, all_points_3d, bodyparts)
     else:
@@ -295,6 +304,7 @@ def triangulate(config,
         M = np.identity(3)
         center = np.zeros(3)
 
+    # csvファイルに結果を記録する
     dout = pd.DataFrame()
     for bp_num, bp in enumerate(bodyparts):
         for ax_num, axis in enumerate(['x','y','z']):
@@ -349,6 +359,7 @@ def process_session(config, session_path):
     if len(vid_names) > 0:
         os.makedirs(output_folder, exist_ok=True)
 
+    # task videoごとにループ
     for name in vid_names:
         fnames = cam_videos[name]
         cam_names = [get_cam_name(config, f) for f in fnames]
@@ -361,7 +372,7 @@ def process_session(config, session_path):
         if os.path.exists(output_fname):
             continue
 
-
+        # Triangulationを行う
         try:
             triangulate(config,
                         calib_folder, video_folder, pose_folder,

@@ -150,6 +150,7 @@ def process_all(config, process_session, **args):
             q.extend(next_folders)
         else:
             if level == nesting:
+                # process_sessionに渡された関数を実行(calibrationとかfilterとかtriangulationとか)
                 output[past_folders] = process_session(config, path, **args)
             elif level > nesting:
                 continue
@@ -165,6 +166,7 @@ def process_all(config, process_session, **args):
 
 def make_process_fun(process_session, **args):
     def fun(config):
+        # procecss_session(関数オブジェクト)を実行する
         return process_all(config, process_session, **args)
     return fun
 
@@ -199,6 +201,7 @@ def get_calibration_board(config):
         raise NotImplementedError("aruco board is not implemented with the current pipeline")
     elif board_type == 'charuco':
         # aniposelibの関数を使ってキャリブレーションボードのインスタンスを生成
+        # ここ超大事
         board = CharucoBoard(
             board_size[0], board_size[1],
             calib['board_square_side_length'],
