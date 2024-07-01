@@ -758,6 +758,7 @@ class CameraGroup:
             error_dict = get_error_dict(errors_full)
             max_error = 0
             min_error = 0
+            # 辞書の中から、再投影誤差の最大値と最小値を求める
             for k, v in error_dict.items():
                 num, percents = v
                 max_error = max(percents[-1], max_error)
@@ -766,7 +767,11 @@ class CameraGroup:
 
             # 再投影誤差が閾値を下回った時のフレームにおける、使用したカメラの外部パラメータを更新する
             good = errors_norm < mu
+            # このextraに入っているrvecs,tvecsは各フレームにおけるボードの3D座標から各カメラのカメラ座標へのベクトル
+            # 再投影誤差が生き血を下回っているフレームの情報のみを抽出
             extra_good = subset_extra(extra, good)
+
+            # 画像座標とextraの更なる絞り込み
             p2ds_samp, extra_samp = resample_points(
                 p2ds[:, good], extra_good, n_samp=n_samp_iter)
 
@@ -786,7 +791,8 @@ class CameraGroup:
                                max_nfev=max_nfev, only_extrinsics=only_extrinsics,
                                verbose=verbose)
 
-
+        
+        # iteration終わったらもう一回3D推定値を求める
         p2ds, extra = resample_points(p2ds_full, extra_full,
                                       n_samp=n_samp_full)
         p3ds = self.triangulate(p2ds)
@@ -847,17 +853,49 @@ class CameraGroup:
         if extra is not None:
             extra['ids_map'] = remap_ids(extra['ids'])
 
+        # x0あらゆる情報が詰まったベクトル(カメラパラメータ、triangulationの結果、基準カメラ -> 各フレームのボードへの座標変換に必要なベクトル),n_cam_paramsカメラパラメータの数(8個)
         x0, n_cam_params = self._initialize_params_bundle(p2ds, extra, only_extrinsics)
 
         if start_params is not None:
             x0 = start_params
             # n_cam_params = len(self.cameras[0].get_params(only_extrinsics))
 
+        # メソッドを代入
         error_fun = self._error_fun_bundle
 
+        #  バンドル調整のためのヤコビアンのスパース構造を計算する(あんまりよくわかってない)
         jac_sparse = self._jac_sparsity_bundle(p2ds, n_cam_params, extra)
 
         f_scale = threshold
+
+        # 非線形最小二乗問題を解く
+        """
+        error_fun: 誤差関数。最小化する対象の関数で、パラメータベクトルを入力として受け取り、誤差のベクトルを返します。
+
+        x0: 初期パラメータの推定値。最適化の開始点となるベクトルです。
+
+        jac_sparsity: ヤコビ行列のスパース性のパターンを示す行列。ヤコビ行列がスパース（疎行列）である場合に計算効率を上げるために使用します。
+
+        f_scale: 誤差関数のスケール。誤差関数の値をスケーリングするために使用します。これにより、誤差関数の値の大きさに依存しない最適化が行えます。
+
+        x_scale: パラメータのスケール。ここでは 'jac' が指定されており、ヤコビ行列を使用してスケーリングが行われます。
+
+        loss: 損失関数。誤差をどのように扱うかを指定します。例えば、'linear'、'soft_l1'、'huber' などの選択肢があります。損失関数によっては、ロバストな最適化が可能です。
+
+        ftol: 誤差関数の停止基準。誤差関数の相対変化がこの値以下になると最適化が終了します。
+
+        method: 最適化アルゴリズムの選択。ここでは 'trf'（Trust Region Reflective algorithm）を使用しています。
+
+        tr_solver: Trust Region Reflective method で使用するソルバ。ここでは 'lsmr'（Least Squares Method by Conjugate Gradients）を指定しています。
+
+        verbose: 最適化の詳細な情報を表示するかどうかを指定します。verbose が 0 の場合は表示されず、2 の場合は詳細な情報が表示されます。
+
+        max_nfev: 誤差関数の最大評価回数。指定した回数を超えると最適化が終了します。
+
+        args: 誤差関数に渡す追加の引数。ここでは (p2ds, n_cam_params, extra, only_extrinsics) が渡されています。
+
+        """
+        # 返ってくるのはerror_funの損失関数に対して最適化を行ったx0
         opt = optimize.least_squares(error_fun,
                                      x0,
                                      jac_sparsity=jac_sparse,
@@ -870,8 +908,10 @@ class CameraGroup:
                                      verbose=2 * verbose,
                                      max_nfev=max_nfev,
                                      args=(p2ds, n_cam_params, extra, only_extrinsics))
+        # 最適化されたパラメータベクトルxを代入
         best_params = opt.x
 
+        # best_paramsから各カメラの8つのカメラパラメータの部分のみを抽出して、各カメラオブジェクトにセット
         for i, cam in enumerate(self.cameras):
             a = i * n_cam_params
             b = (i + 1) * n_cam_params
@@ -995,7 +1035,8 @@ class CameraGroup:
         """Given an CxNx2 array of 2D points,
         where N is the number of points and C is the number of cameras,
         initializes the parameters for bundle adjustment"""
-
+        
+        # cameraオブジェクトから8つのカメラパラメータを抽出する(rvec, tvec, f, 歪み補正係数k)
         cam_params = np.hstack([cam.get_params(only_extrinsics) for cam in self.cameras])
         n_cam_params = len(cam_params) // len(self.cameras)
 
@@ -1008,6 +1049,7 @@ class CameraGroup:
 
         p3ds = self.triangulate(p2ds)
 
+        # カメラオブジェクトとextraを使って、基準カメラから、board_numフレームにおけるボード3次元座標系の原点への座標変換行列を求める
         if extra is not None:
             ids = extra['ids_map']
             n_boards = int(np.max(ids[~np.isnan(ids)])) + 1
@@ -1020,15 +1062,24 @@ class CameraGroup:
             if 'rvecs' in extra and 'tvecs' in extra:
                 rvecs_all = extra['rvecs']
                 tvecs_all = extra['tvecs']
+
+                # ボードの枚数(フレーム数)でiteration
                 for board_num in range(n_boards):
                     point_id = np.where(ids == board_num)[0][0]
+                    # board_numフレームにおける原点の画像座標を持っているカメラのidをベクトルとして出力(3カメラすべてで写っていれば[0,1,2]となる)
                     cam_ids_possible = np.where(~np.isnan(p2ds[:, point_id, 0]))[0]
                     cam_id = np.random.choice(cam_ids_possible)
+                    # 基準となるカメラ座標からcam_idのカメラ座標への座標変換行列
                     M_cam = self.cameras[cam_id].get_extrinsics_mat()
+                    # cam_idのカメラ座標からboard_numフレームにおけるボードの3次元座標の原点への座標変換行列
                     M_board_cam = make_M(rvecs_all[cam_id, point_id],
                                          tvecs_all[cam_id, point_id])
+                    # 基準となるカメラ座標からboard_numフレームにおけるボードの3次元座標の原点への座標変換行列
+                    # (基準カメラ -> カメラオブジェクトカメラ, カメラオブジェクトカメラ -> ボード3D)
                     M_board = np.matmul(inv(M_cam), M_board_cam)
                     rvec, tvec = get_rtvec(M_board)
+
+                    # 空の配列rvecs,tvecsに結果を代入
                     rvecs[board_num] = rvec
                     tvecs[board_num] = tvec
 
@@ -1036,6 +1087,7 @@ class CameraGroup:
         else:
             total_board_params = 0
 
+        # x0にすべての情報を突っ込む(各カメラからのカメラパラメータ8個ずつ + 3次元姿勢推定値(ravel処理でベクトル化) + 各フレームでの座標変換行列(ravel処理でベクトル化))
         x0 = np.zeros(total_cam_params + p3ds.size + total_board_params)
         x0[:total_cam_params] = cam_params
         x0[total_cam_params:total_cam_params+p3ds.size] = p3ds.ravel()
@@ -1662,6 +1714,7 @@ class CameraGroup:
         # バンドル調整による損失関数を最小化することで、カメラパラメータを最適化する
         # 最終的な全カメラの組み合わせでの全フレームにおける再投影誤差の中央値も返す
         # imgpは各カメラからの、全フレーム、全ポイントの画像座標、extraの中のrvecs, tvecsは全フレーム、全ポイントのボード座標から、各カメラ座標への回転ベクトルと並進ベクトル
+        # ここでのextraは各カメラと、各フレームにおけるボードの３次元座標との間の座標変換の情報が入っている
         error = self.bundle_adjust_iter(imgp, extra, verbose=verbose, **kwargs)
 
         return error
