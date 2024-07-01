@@ -179,7 +179,7 @@ def process_session(config, session_path):
         if len(videos) == 0:
             print('no videos or calibration file found, continuing...')
             return
-        # aniposelibの中からクラスを持ってきて格納
+        # aniposelib内のモジュールによってcgroupクラスを作成
         cgroup = CameraGroup.from_names(cam_names, config['calibration']['fisheye'])
     
     # charucoボードのインスタンスを生成(aniposelibのboard.pyで定義されたクラス)
@@ -207,6 +207,7 @@ def process_session(config, session_path):
         #                       verbose=True)
 
         # calibrationの実行(バンドル調整によって記述される損失関数を最小化してカメラパラメータを最適化)
+        # 最適化されたカメラパラメータは各カメラのオブジェクトのプロパティとして格納される
         # 全カメラの組み合わせでの全フレームにおける再投影誤差の中央値を返す
         error = cgroup.calibrate_rows(all_rows, board,
                                       init_intrinsics=init_stuff, init_extrinsics=init_stuff,
