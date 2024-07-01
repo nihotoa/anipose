@@ -139,6 +139,7 @@ def process_session(config, session_path):
     cam_videos = defaultdict(list)
     cam_names = set()
     for vid in videos:
+        # cam_regexパラメータの正規表現に従ってnameを抽出
         name = get_cam_name(config, vid)
         cam_videos[name].append(vid)
         cam_names.add(name)
@@ -178,8 +179,10 @@ def process_session(config, session_path):
         if len(videos) == 0:
             print('no videos or calibration file found, continuing...')
             return
+        # aniposelibの中からクラスを持ってきて格納
         cgroup = CameraGroup.from_names(cam_names, config['calibration']['fisheye'])
-
+    
+    # charucoボードのインスタンスを生成(aniposelibのboard.pyで定義されたクラス)
     board = get_calibration_board(config)
 
 
@@ -189,6 +192,7 @@ def process_session(config, session_path):
             with open(rows_fname, 'rb') as f:
                 all_rows = pickle.load(f)
         else:
+            # video_listの各videoの全フレームの全コーナーを検出して、その画像座標、実座標、その他の必要情報を辞書にして返す
             all_rows = cgroup.get_rows_videos(video_list, board)
             with open(rows_fname, 'wb') as f:
                 pickle.dump(all_rows, f)
@@ -201,6 +205,9 @@ def process_session(config, session_path):
         #                       max_nfev=100, n_iters=2,
         #                       n_samp_iter=100, n_samp_full=300,
         #                       verbose=True)
+
+        # calibrationの実行(バンドル調整によって記述される損失関数を最小化してカメラパラメータを最適化)
+        # 全カメラの組み合わせでの全フレームにおける再投影誤差の中央値を返す
         error = cgroup.calibrate_rows(all_rows, board,
                                       init_intrinsics=init_stuff, init_extrinsics=init_stuff,
                                       max_nfev=200, n_iters=6,
@@ -210,6 +217,8 @@ def process_session(config, session_path):
     cgroup.metadata['adjusted'] = False
     if error is not None:
         cgroup.metadata['error'] = float(error)
+
+    # outnameで指定したファイル名でtomlファイルを作成(各カメラの最終的なパラメータ情報等を記録)
     cgroup.dump(outname)
         
     if config['calibration']['animal_calibration']:
@@ -224,6 +233,7 @@ def process_session(config, session_path):
         cgroup.metadata['adjusted'] = True
         cgroup.metadata['error'] = float(error)
 
+    # outnameで指定したファイル名でtomlファイルを作成
     cgroup.dump(outname)
 
 

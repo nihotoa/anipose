@@ -108,3 +108,11 @@ ENV/
 .mypy_cache/
 
 .DS_Store
+
+# Ignore all folders at the root level except for docs and anipose
+/*
+!/docs/
+!/anipose/
+!/aniposelib/
+
+C:/Users/903337.DESKTOP-KA9V2TP/Desktop/anipose_development/anipose/aniposelib

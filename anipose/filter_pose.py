@@ -50,6 +50,7 @@ def viterbi_path(points, scores, n_back=3, thres_dist=30):
     num_points = np.sum(~np.isnan(points_nans[:, :, 0]), axis=1)
     num_max = np.max(num_points)
 
+    # nan値の補完(具体的な補完内容はわかってない)
     particles = np.zeros((n_frames, num_max * n_back + 1, 3), dtype='float64')
     valid = np.zeros(n_frames, dtype='int64')
     for i in range(n_frames):
@@ -68,6 +69,7 @@ def viterbi_path(points, scores, n_back=3, thres_dist=30):
         valid[i] = s
 
     ## viterbi algorithm
+    #計算前の初期設定(対数尤度など)
     n_particles = np.max(valid)
 
     T_logprob = np.zeros((n_frames, n_particles), dtype='float64')
@@ -77,6 +79,7 @@ def viterbi_path(points, scores, n_back=3, thres_dist=30):
     T_logprob[0, :valid[0]] = np.log(particles[0, :valid[0], 2])
     T_back[0, :] = -1
 
+    # 各フレームに対してviterbiフィルタを適用(中身はわかってない)
     for i in range(1, n_frames):
         va, vb = valid[i-1], valid[i]
         pa = particles[i-1, :va, :2]
@@ -117,12 +120,15 @@ def viterbi_path(points, scores, n_back=3, thres_dist=30):
 
 
 def viterbi_path_wrapper(args):
+    # 入力引数のtupleをunpack
     jix, pts, scs, max_offset, thres_dist = args
+    # viterbiフィルタを適用
     pts_new, scs_new = viterbi_path(pts, scs, max_offset, thres_dist)
     return jix, pts_new, scs_new
 
 
 def load_pose_2d(fname):
+    # h5ファイルのロード
     data_orig = pd.read_hdf(fname)
     scorer = data_orig.columns.levels[0][0]
     data = data_orig.loc[:, scorer]
@@ -147,14 +153,18 @@ def load_pose_2d(fname):
 def filter_pose_viterbi(config, all_points, bodyparts):
     n_frames, n_joints, n_possible, _ = all_points.shape
 
+    # 画像座標とlikelyhoodで配列を分ける
     points_full = all_points[:, :, :, :2]
     scores_full = all_points[:, :, :, 2]
 
+    # 画像座標の中でlikelyhoodがthreshold以下のものはnanに変更する
     points_full[scores_full < config['filter']['score_threshold']] = np.nan
 
+    # フィルタリング後のデータ格納用の空の配列を作る
     points = np.full((n_frames, n_joints, 2), np.nan, dtype='float64')
     scores = np.empty((n_frames, n_joints), dtype='float64')
 
+    # 並列処理のための設定
     if config['filter']['multiprocessing']:
         n_proc_default = max(min(cpu_count() // 2, n_joints), 1)
         n_proc = config['filter'].get('n_proc', n_proc_default)
@@ -166,12 +176,16 @@ def filter_pose_viterbi(config, all_points, bodyparts):
     max_offset = config['filter']['n_back']
     thres_dist = config['filter']['offset_threshold']
 
+    # 関節のid,filter前の画像座標,likelyhood等をまとめる(長さ=n_joints, 各要素はtuple(その関節の全フレームの画像座標、likelyhood,などが入ってる))
     iterable = [ (jix, points_full[:, jix, :], scores_full[:, jix],
                   max_offset, thres_dist)
                  for jix in range(n_joints) ]
 
+    # viterbi filteringの実行(並列処理で、viterbi_path_wrapper関数を、データiterableに適用する),結果はiteratorで返される
+    # リストiterableの各要素(tuple)をviterbi_path_wrapper関数の入力引数として渡して処理を行う
     results = pool.imap_unordered(viterbi_path_wrapper, iterable)
 
+    # フィルタを行い、新しい画像座標とスコアを、結果を格納するための配列に割り当てていく
     for jix, pts_new, scs_new in tqdm(results, ncols=70):
         points[:, jix] = pts_new
         scores[:, jix] = scs_new
@@ -380,10 +394,14 @@ def process_session(config, session_path):
             continue
 
         print(outpath)
+
+        # anipose analyzeから得たh5ファイルから値を抽出(all_points: 各フレーム、各関節の画像座標とlikelyhood、metadata: body_parts,フレームのindexなど)
         all_points, metadata = load_pose_2d(fname)
 
         for filter_type in filter_types:
+            # 関数オブジェクトのリストから、filter_typeに応じて使用する関数を選択
             filter_fun = FILTER_MAPPING[filter_type]
+            # 2D filterの実行
             points, scores = filter_fun(config, all_points, metadata['bodyparts'])
             all_points = wrap_points(points, scores)
 
