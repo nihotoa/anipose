@@ -107,7 +107,7 @@ def get_connections(xs, cam_names=None, both=True):
     connections = defaultdict(int)
 
     for rnum in range(n_points):
-        # 任意のフレームrnumにおいて、NaN値ではない値を持っているカメラのindexのリストを返す
+        # 任意のフレームrnumにおいて、rtvecsがNaN値ではない値を持っているカメラのindexのリストを返す
         ixs = np.where(~np.isnan(xs[:, rnum, 0]))[0]
         keys = [cam_names[ix] for ix in ixs]
         for i in range(len(keys)):

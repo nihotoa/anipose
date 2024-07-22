@@ -344,7 +344,7 @@ class Camera:
         self.rvec, tvecで基準カメラから
         """
         # tiriangulationによって求められた物体の3次元推定値(p3d)から任意のカメラのカメラ平面へ投影した平面座標を求める
-        # 投影する平面はカメラオブジェクトの平面座標であることに注意。(rvecとtvecが既知だからできる)
+        # 投影する平面はカメラオブジェクトの平面座標であることに注意
         proj = self.project(p3d).reshape(p2d.shape)
 
         # 画像座標(p2d)は任意のカメラからの画像座標
@@ -407,7 +407,7 @@ class FisheyeCamera(Camera):
 
     def project(self, points):
         points = points.reshape(-1, 1, 3)
-        # カメラパラメータ行列と3次元座標をもとに、各カメラの平面に投影
+        # カメラパラメータ行列と3次元座標をもとに、基準カメラの平面に投影
         # self.rvec, self.tvec、self.matrix, self.distというすべてのカメラパラメータが使われている
         out, _ = cv2.fisheye.projectPoints(points,
                                            self.rvec, self.tvec,
@@ -539,6 +539,7 @@ class CameraGroup:
             # 任意のフレームの任意のポイントが2台以上のカメラから撮影されているとき
             if np.sum(good) >= 2:
                 # シンプルtriangulation(全カメラの画像座標と全カメラの回転行列が入力引数,出力は再構成された3次元座標)
+                # 3次元座標値は基準カメラのカメラ座標系を基準とした値
                 out[ip] = triangulate_simple(subp[good], cam_mats[good])
 
         if one_point:
@@ -768,7 +769,7 @@ class CameraGroup:
             # 再投影誤差が閾値を下回った時のフレームにおける、使用したカメラの外部パラメータを更新する
             good = errors_norm < mu
             # このextraに入っているrvecs,tvecsは各フレームにおけるボードの3D座標から各カメラのカメラ座標へのベクトル
-            # 再投影誤差が生き血を下回っているフレームの情報のみを抽出
+            # 再投影誤差が閾値を下回っているフレームの情報のみを抽出
             extra_good = subset_extra(extra, good)
 
             # 画像座標とextraの更なる絞り込み
@@ -785,7 +786,7 @@ class CameraGroup:
                 pprint(error_dict)
                 print('error: {:.2f}, mu: {:.1f}, ratio: {:.3f}'.format(error, mu, np.mean(good)))
 
-            # 再びバンドル調整
+            # ここで初めてバンドル調整
             self.bundle_adjust(p2ds_samp, extra_samp,
                                loss='linear', ftol=ftol,
                                max_nfev=max_nfev, only_extrinsics=only_extrinsics,
@@ -895,7 +896,7 @@ class CameraGroup:
         args: 誤差関数に渡す追加の引数。ここでは (p2ds, n_cam_params, extra, only_extrinsics) が渡されています。
 
         """
-        # 返ってくるのはerror_funの損失関数に対して最適化を行ったx0
+        # 返ってくるのはerror_funの損失関数に対して最適化を行ったx0(パラメータベクトル)
         opt = optimize.least_squares(error_fun,
                                      x0,
                                      jac_sparsity=jac_sparse,

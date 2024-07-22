@@ -201,7 +201,6 @@ def get_calibration_board(config):
         raise NotImplementedError("aruco board is not implemented with the current pipeline")
     elif board_type == 'charuco':
         # aniposelibの関数を使ってキャリブレーションボードのインスタンスを生成
-        # ここ超大事
         board = CharucoBoard(
             board_size[0], board_size[1],
             calib['board_square_side_length'],
