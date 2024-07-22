@@ -125,6 +125,7 @@ def process_session(config, session_path):
 
     print(session_path)
     
+    # 'calibration'という名前のフォルダを見つけて、pathを返す(見つからなかったらなにも返さない)
     calibration_path = find_calibration_folder(config, session_path)
 
     if calibration_path is None:
@@ -157,6 +158,7 @@ def process_session(config, session_path):
     init_stuff = True
     error = None
 
+    # calibration.tomlがcalibrationフォルダの中にあるかどうか
     if os.path.exists(outname):
         cgroup = CameraGroup.load(outname)
         if (not config['calibration']['animal_calibration']) or \
@@ -181,7 +183,7 @@ def process_session(config, session_path):
             return
         # aniposelib内のモジュールによってcgroupクラスを作成
         cgroup = CameraGroup.from_names(cam_names, config['calibration']['fisheye'])
-    
+
     # charucoボードのインスタンスを生成(aniposelibのboard.pyで定義されたクラス)
     board = get_calibration_board(config)
 
@@ -221,7 +223,7 @@ def process_session(config, session_path):
 
     # outnameで指定したファイル名でtomlファイルを作成(各カメラの最終的なパラメータ情報等を記録)
     cgroup.dump(outname)
-        
+
     if config['calibration']['animal_calibration']:
         all_points, all_scores, all_cam_names = load_2d_data(config, calibration_path)
         imgp = process_points_for_calibration(all_points, all_scores)

@@ -1,10 +1,10 @@
 
-project = 'hand-demo'
+project = 'drawer-task-demo'
 
-model_folder = 'C:\Users\903337.DESKTOP-KA9V2TP\Desktop\anipose_development\hand-demo-dlc-TuthillLab-2019-08-05'
+model_folder = ''
 
 nesting = 1
-video_extension = 'MOV'
+video_extension = 'avi'
 
 [filter]
 enabled = true
@@ -40,11 +40,7 @@ fisheye = true
 
 [labeling]
 scheme = [
-   ["base", "MCP1", "PIP1", "tip1"],
-   ["base", "MCP2", "PIP2", "DIP2", "tip2"],
-   ["base", "MCP3", "PIP3", "DIP3", "tip3"],
-   ["base", "MCP4", "PIP4", "DIP4", "tip4"],
-   ["base", "MCP5", "PIP5", "DIP5", "tip5"]
+   ["Index-nail", "Index-DIP", "Index-PIP"]
  ]
 
 [triangulation]
@@ -54,11 +50,7 @@ cam_align = "A"
 ransac = true
 optim = false
 constraints = [
-   ["base", "MCP1"], ["MCP1", "PIP1"], ["PIP1", "tip1"],
-   ["base", "MCP2"], ["MCP2", "PIP2"], ["PIP2", "DIP2"], ["DIP2", "tip2"],
-   ["base", "MCP3"], ["MCP3", "PIP3"], ["PIP3", "DIP3"], ["DIP3", "tip3"],
-   ["base", "MCP4"], ["MCP4", "PIP4"], ["PIP4", "DIP4"], ["DIP4", "tip4"],
-   ["base", "MCP5"], ["MCP5", "PIP5"], ["PIP5", "DIP5"], ["DIP5", "tip5"]
+   ["Index-nail", "Index-DIP"], ["Index-DIP", "Index-PIP"]
 ]
 scale_smooth = 2
 scale_length = 2

@@ -349,6 +349,7 @@ class CalibrationObject(ABC):
         # 開いていた動画ファイルを閉じる(cv2.VideoCaptureによって作られたクラスを閉じる)
         cap.release()
 
+        # 各rowの'corners'を複製して'filled'という新しいkeyにを割り当てる
         rows = self.fill_points_rows(rows)
 
         return rows
@@ -570,7 +571,7 @@ class CharucoBoard(CalibrationObject):
         dkey = (marker_bits, dict_size)
         self.dictionary = cv2.aruco.getPredefinedDictionary(ARUCO_DICTS[dkey])
 
-        # CharucoBoardインスタンスの生成(この時の原点位置と軸方向が基準となる実座標系になる)
+        # CharucoBoardインスタンスの生成
         self.board = cv2.aruco.CharucoBoard([squaresX, squaresY],
                                             square_length, marker_length,
                                             self.dictionary)
@@ -597,7 +598,7 @@ class CharucoBoard(CalibrationObject):
         return np.copy(self.empty_detection)
 
     def draw(self, size):
-        return self.board.draw(size)
+        return self.board.generateImage(size)
 
     def fill_points(self, corners, ids):
         out = self.get_empty_detection()
