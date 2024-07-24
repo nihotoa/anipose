@@ -8,10 +8,12 @@ from scipy import signal
 from numba import jit
 from collections import defaultdict, Counter
 import toml
+import pickle
 import itertools
 from tqdm import trange
 from pprint import pprint
 import time
+import os
 
 from .boards import merge_rows, extract_points, \
     extract_rtvecs, get_video_params
@@ -708,7 +710,7 @@ class CameraGroup:
                            max_nfev=200, ftol=1e-4,
                            n_samp_iter=200, n_samp_full=1000,
                            error_threshold=0.3, only_extrinsics=False,
-                           verbose=False):
+                           verbose=False, **kwargs):
         """Given an CxNx2 array of 2D points,
         where N is the number of points and C is the number of cameras,
         this performs iterative bundle adjustsment to fine-tune the parameters of the cameras.
@@ -829,7 +831,6 @@ class CameraGroup:
 
         if verbose:
             print('error: ', error)
-
         return error
 
     def bundle_adjust(self, p2ds, extra=None,
