@@ -4,7 +4,7 @@ project = 'drawer-task-demo'
 model_folder = ''
 
 nesting = 1
-video_extension = 'avi'
+video_extension = 'MOV'
 
 [filter]
 enabled = true
@@ -37,6 +37,8 @@ board_square_side_length = 25 # mm
 animal_calibration = false
 
 fisheye = true
+
+display_calibration_result = true
 
 [labeling]
 scheme = [

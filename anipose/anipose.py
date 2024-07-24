@@ -13,7 +13,8 @@ DEFAULT_CONFIG = {
     'calibration': {
         'animal_calibration': False,
         'calibration_init': None,
-        'fisheye': False
+        'fisheye': False,
+        'display_calibration_result': False
     },
     'manual_verification': {
         'manually_verify': False

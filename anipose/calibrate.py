@@ -2,10 +2,12 @@
 
 from tqdm import tqdm
 import numpy as np
+import cv2
 import os
 from glob import glob
 from collections import defaultdict
 import pickle
+import re
 
 from .common import \
     find_calibration_folder, make_process_fun, process_all, \
@@ -118,10 +120,103 @@ def process_points_for_calibration(all_points, all_scores):
 
     return points
 
+# 自分で作った関数。corner detectionの動画を出力する
+def EvaluateCornerDetection(board, video_list, data_fold_path, **kwargs):
+    print('---------------start corner detection---------------')
+    axis_flag=False
+    # corner detectionの結果(all_rows)とカメラの内部パラメータをロードする
+    all_rows_data_path = os.path.join(data_fold_path, 'optimized_all_rows.pickle')
+    matrix_data_path = os.path.join(data_fold_path, 'optimized_intrinsic_matrix.pickle')
+    distortion_data_path = os.path.join(data_fold_path, 'optimized_distortion_vector.pickle')
+    if os.path.exists(all_rows_data_path):
+        axis_flag=True
+        with open(distortion_data_path, 'rb') as f:
+            distortion_list = pickle.load(f)
+        with open(all_rows_data_path, 'rb') as f:
+            all_rows = pickle.load(f)
+        with open(matrix_data_path, 'rb') as f:
+            intrinsic_matrix_list = pickle.load(f)
+    else:
+        all_rows_data_path = os.path.join(data_fold_path, 'detections.pickle')
+        with open(all_rows_data_path, 'rb') as f:
+            all_rows = pickle.load(f)
+
+    output_fold_path = data_fold_path.replace('calibration', 'cornerDetection')
+    if not os.path.exists(output_fold_path):
+        os.makedirs(output_fold_path)
+
+    # これ以下の処理はカメラごとにループさせる
+    for video_idx in range(len(video_list)):
+        videoPath = video_list[video_idx][0]
+        # 出力する動画の名前を設定
+        if axis_flag:
+            output_video_name = videoPath.split('\\')[-1].split('.')[0] + '(corner_detection_with_axis).mp4'
+        else:
+            output_video_name = videoPath.split('\\')[-1].split('.')[0] + '(corner_detection_no_axis).mp4'
+
+        outputPath = os.path.join(output_fold_path, output_video_name)
+        if os.path.exists(outputPath):
+            continue
+        
+        camera_name = re.search(r'-cam([A-Za-z])', output_video_name).group(1)
+
+        # 該当するrowsとintrinsic_matrixを取得
+        rows = all_rows[video_idx]
+        detected_frame_idx_list = [row['framenum'][1] for row in rows]
+        if axis_flag:
+            intrinsic_matrix = intrinsic_matrix_list[camera_name]
+
+        try:
+            cap = cv2.VideoCapture(videoPath)
+            # 動画のプロパティ取得
+            frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+
+            # 動画の出力設定'
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 動画のフォーマット
+            out = cv2.VideoWriter(outputPath, fourcc, fps, (frame_width, frame_height))
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+            print(f'output_movie_path: {outputPath}')
+
+            # 指定した動画から各フレームの画像を抽出
+            for frame_idx in tqdm(range(frame_count), desc=f'camera-{camera_name} Processing', ncols=80):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                # マーカーが検出された場合
+                if frame_idx in detected_frame_idx_list:
+                    row_idx = detected_frame_idx_list.index(frame_idx)
+                    row = rows[row_idx]
+                    markerCorners = row['corners']
+                    markerIds = row['ids']
+                    # 検出されたコーナーを描画
+                    cv2.aruco.drawDetectedCornersCharuco(frame, markerCorners, markerIds)
+                    
+                    # 軸の描画
+                    if axis_flag:
+                        rvec = row['rvec']
+                        tvec = row['tvec']
+                        if rvec is not None and tvec is not None:
+                            distCoeffs = distortion_list[camera_name]
+                            # ChArUcoボードの軸を描画
+                            cv2.drawFrameAxes(frame, intrinsic_matrix, distCoeffs, rvec, tvec, board.square_length*1.5, 2)
+
+                # フレームを動画に書き込み
+                out.write(frame)
+        finally:
+            # 動画の解放
+            cap.release()
+            out.release()
+            cv2.destroyAllWindows()
+
 def process_session(config, session_path):
     pipeline_calibration_videos = config['pipeline']['calibration_videos']
     pipeline_calibration_results = config['pipeline']['calibration_results']
     video_ext = config['video_extension']
+    display_calibration_flag = config['calibration']['display_calibration_result']
 
     print(session_path)
     
@@ -158,9 +253,16 @@ def process_session(config, session_path):
     init_stuff = True
     error = None
 
+    # charucoボードのインスタンスを生成(aniposelibのboard.pyで定義されたクラス)
+    board = get_calibration_board(config)
+
     # calibration.tomlがcalibrationフォルダの中にあるかどうか
     if os.path.exists(outname):
         cgroup = CameraGroup.load(outname)
+        # コーナー検出を行う(ボードの実座標の軸もプロット)
+        if display_calibration_flag:
+            EvaluateCornerDetection(board, video_list, outdir)
+
         if (not config['calibration']['animal_calibration']) or \
            ('adjusted' in cgroup.metadata and cgroup.metadata['adjusted']):
             return
@@ -184,12 +286,10 @@ def process_session(config, session_path):
         # aniposelib内のモジュールによってcgroupクラスを作成
         cgroup = CameraGroup.from_names(cam_names, config['calibration']['fisheye'])
 
-    # charucoボードのインスタンスを生成(aniposelibのboard.pyで定義されたクラス)
-    board = get_calibration_board(config)
-
 
     if not skip_calib:
         rows_fname = os.path.join(outdir, 'detections.pickle')
+        # すでにボードのキャリブレーションが済んでいるかどうかの確認(pickleファイルの有無)
         if os.path.exists(rows_fname):
             with open(rows_fname, 'rb') as f:
                 all_rows = pickle.load(f)
@@ -198,6 +298,9 @@ def process_session(config, session_path):
             all_rows = cgroup.get_rows_videos(video_list, board)
             with open(rows_fname, 'wb') as f:
                 pickle.dump(all_rows, f)
+
+        if display_calibration_flag:
+            EvaluateCornerDetection(board, video_list, outdir)
 
         cgroup.set_camera_sizes_videos(video_list)
 
@@ -211,11 +314,13 @@ def process_session(config, session_path):
         # calibrationの実行(バンドル調整によって記述される損失関数を最小化してカメラパラメータを最適化)
         # 最適化されたカメラパラメータは各カメラのオブジェクトのプロパティとして格納される
         # 全カメラの組み合わせでの全フレームにおける再投影誤差の中央値を返す
+        pickle_save_path = os.path.join(calibration_path, pipeline_calibration_results)
         error = cgroup.calibrate_rows(all_rows, board,
-                                      init_intrinsics=init_stuff, init_extrinsics=init_stuff,
-                                      max_nfev=200, n_iters=6,
-                                      n_samp_iter=200, n_samp_full=1000,
-                                      verbose=True)
+                          init_intrinsics=init_stuff, init_extrinsics=init_stuff,
+                          max_nfev=200, n_iters=6,
+                          n_samp_iter=200, n_samp_full=1000,
+                          verbose=True,
+                          pickle_save_path=pickle_save_path)
 
     cgroup.metadata['adjusted'] = False
     if error is not None:
@@ -239,5 +344,36 @@ def process_session(config, session_path):
     # outnameで指定したファイル名でtomlファイルを作成
     cgroup.dump(outname)
 
+    # コーナー検出を行う(ボードの実座標の軸もプロット)
+    # matrix,distortion,rotationのデータをpickleファイルに保存
+    matrix_dict={}
+    distortion_dict={}
+    for cam in cgroup.cameras:
+        cam_name = cam.name
+        matrix_dict[cam_name]=cam.matrix
+        distortion_dict[cam_name]=cam.dist
+
+    # all_rowsのrvec,tvecの更新(matrixとdistortionを新しくしたので)
+    for i, (row, cam) in enumerate(zip(all_rows, cgroup.cameras)):
+        all_rows[i] = board.estimate_pose_rows(cam, row)
+    
+    # 保存
+    matrix_file_name = os.path.join(pickle_save_path, 'optimized_intrinsic_matrix.pickle')
+    distortion_file_name = os.path.join(pickle_save_path, 'optimized_distortion_vector.pickle')
+    all_rows_file_name = os.path.join(pickle_save_path, 'optimized_all_rows.pickle')
+    if not os.path.exists(all_rows_file_name):
+        with open(all_rows_file_name, 'wb') as f:
+            pickle.dump(all_rows, f)
+
+    if not os.path.exists(matrix_file_name):
+        with open(matrix_file_name, 'wb') as f:
+            pickle.dump(matrix_dict, f)
+
+    if not os.path.exists(distortion_file_name):
+        with open(distortion_file_name, 'wb') as f:
+            pickle.dump(distortion_dict, f)
+
+    if display_calibration_flag:
+        EvaluateCornerDetection(board, video_list, outdir)
 
 calibrate_all = make_process_fun(process_session)
