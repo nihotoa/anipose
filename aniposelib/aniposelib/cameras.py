@@ -1679,6 +1679,12 @@ class CameraGroup:
                 objp, imgp = zip(*mixed)
                 # 内部パラメータ行列の計算
                 matrix = cv2.initCameraMatrix2D(objp, imgp, tuple(size))
+                # 焦点距離がうまく計算できなかった場合は、手動で焦点距離を設定する
+                if np.isnan(matrix[0,0]) and np.isnan(matrix[1,1]):
+                    init_focal_length = 1000
+                    matrix[0,0] = init_focal_length
+                    matrix[1,1] = init_focal_length
+                    
                 # 各カメラインスタンスの.matrixプロパティに内部パラメータ行列matrixを代入
                 camera.set_camera_matrix(matrix.copy())
                 camera.zero_distortions()

@@ -1,9 +1,8 @@
 import cv2
 import numpy as np
 from abc import ABC, abstractmethod
-from tqdm import trange
+from tqdm import trange, tqdm
 from collections import defaultdict
-
 
 def get_video_params_cap(cap):
     params = dict()
@@ -356,14 +355,18 @@ class CalibrationObject(ABC):
 
     def estimate_pose_rows(self, camera, rows):
         # フレームごとにイテレーション
-        for row in rows:
+        print(f'searching camera-{camera.name} rotation vector...')
+        pose_detected_frame_count = 0
+        for row in tqdm(rows):
             # 任意のフレームのcharucoボードの３次元座標から、カメラ座標系への回転ベクトルと並進ベクトル
             # ここで使われているカメラオブジェクトのカメラ座標への座標変換ベクトル
-            rvec, tvec = self.estimate_pose_points(camera,
+            rvec, tvec, ret_value = self.estimate_pose_points(camera,
                                                    row['corners'],
                                                    row['ids'])
             row['rvec'] = rvec
             row['tvec'] = tvec
+            pose_detected_frame_count += ret_value
+        print(f'camera-{camera.name} detected rotation vector: {pose_detected_frame_count}/{len(rows)}')
         return rows
 
     def fill_points_rows(self, rows):
@@ -697,7 +700,7 @@ class CharucoBoard(CalibrationObject):
 
     def estimate_pose_points(self, camera, corners, ids):
         if corners is None or ids is None or len(corners) < 7:
-            return None, None
+            return None, None, 0
 
         n_corners = corners.size // 2
         corners = np.reshape(corners, (n_corners, 1, 2))
@@ -710,5 +713,9 @@ class CharucoBoard(CalibrationObject):
         # どのカメラ座標かはK,Dによって決まる(K,Dのプロパティを持っているカメラオブジェクトのカメラ座標)
         ret, rvec, tvec = cv2.aruco.estimatePoseCharucoBoard(
             corners, ids, self.board, K, D, None, None)
+        
+        ret_value=0
+        if ret:
+            ret_value = 1
 
-        return rvec, tvec
+        return rvec, tvec, ret_value

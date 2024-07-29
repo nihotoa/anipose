@@ -1,10 +1,10 @@
 
 project = 'drawer-task-demo'
 
-model_folder = ''
+model_folder = 'C:\Users\903337.DESKTOP-KA9V2TP\Desktop\anipose_development\hand-demo-dlc-TuthillLab-2019-08-05'
 
 nesting = 1
-video_extension = 'MOV'
+video_extension = 'mp4'
 
 [filter]
 enabled = true
